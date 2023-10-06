@@ -1,0 +1,116 @@
+version: '3.9'
+
+services:
+
+  bank:
+    image: bank:latest
+    restart: on-failure:3
+    environment:
+      ENVIRONMENT: compose
+      DB_SOURCE: postgresql://postgres:docker@db:5432/bankdb?sslmode=disable
+      MIGRATION_URL: file://migrations
+      LOG_LEVEL: DEBUG
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+    container_name: bank
+    volumes:
+      - .././db/migrations:/app/bin/migrations
+    deploy: 
+      resources:
+        limits:
+          memory: 128M
+
+  # PostgreSQL
+  # server: db
+  # user: postgres
+  # password: docker
+  # db: bankdb
+  db:
+    image: postgres:bullseye
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: docker
+      POSTGRES_DB: bankdb
+      SCHEMA: public
+    ports:
+      - 5432:5432
+    networks:
+      - backend
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    container_name: postgres
+    deploy: 
+      resources:
+        limits:
+          memory: 512M
+
+  db-admin:
+    image: adminer
+    restart: always
+    networks:
+      - backend
+    ports:
+      - 9080:8080
+    depends_on:
+      db:
+        condition: service_healthy
+    container_name: postgres-admin
+    deploy: 
+      resources:
+        limits:
+          memory: 256M
+
+  # Use golang-migrate to manage db migrations
+  # Run the first DB migraiton path after DB is started, to get a fresh db
+  db-init:
+    image: migrate/migrate:v4.16.2
+    networks:
+      - backend
+    volumes:
+      - .././db/migrations:/migrations
+    entrypoint:
+      [
+        "migrate",
+        "-path",
+        "/migrations",
+        "-database",
+        "postgres://postgres:docker@db:5432/bankdb?sslmode=disable",
+      ]
+    command: ["up"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
+  # Use golang-migrate to manage db migrations
+  # Migrate to be used for manual migrations, triggered using --profile tools 
+  db-migrate:
+    image: migrate/migrate:v4.16.2
+    profiles: ["tools"]
+    networks:
+      - backend
+    volumes:
+      - .././db/migrations:/migrations
+    entrypoint:
+      [
+        "migrate",
+        "-path",
+        "/migrations",
+        "-database",
+        "postgres://postgres:docker@db:5432/bankdb?sslmode=disable",
+      ]
+    command: ["up"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
+networks:
+  backend:
