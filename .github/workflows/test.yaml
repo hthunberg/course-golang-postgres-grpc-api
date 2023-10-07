@@ -51,3 +51,7 @@ jobs:
     # Run all tests that are not integration tests
     - name: Test
       run: make test
+
+    # Run all integrationtests
+    - name: Integrationtest
+      run: make integrationtest
