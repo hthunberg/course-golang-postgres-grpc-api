@@ -10,10 +10,11 @@ import (
 // The values are read by viper from a config file or environment variable.
 // Viper uses the mapstructure package under the hood for unmarshal of values.
 type Config struct {
-	Environment  string `mapstructure:"ENVIRONMENT"`
-	DBSource     string `mapstructure:"DB_SOURCE"`
-	MigrationURL string `mapstructure:"MIGRATION_URL"`
-	LogLevel     string `mapstructure:"LOG_LEVEL"`
+	Environment       string `mapstructure:"ENVIRONMENT"`
+	DBSource          string `mapstructure:"DB_SOURCE"`
+	MigrationURL      string `mapstructure:"MIGRATION_URL"`
+	LogLevel          string `mapstructure:"LOG_LEVEL"`
+	HTTPServerAddress string `mapstructure:"HTTP_SERVER_ADDRESS"`
 }
 
 // LoadConfig reads configuration from file or environment variables.
@@ -36,6 +37,7 @@ func LoadConfig(path string) (config Config, err error) {
 	viper.SetDefault("DB_SOURCE", "postgresql://postgres:postgres@localhost:5432/bankdb?sslmode=disable")
 	viper.SetDefault("MIGRATION_URL", "file://migrations")
 	viper.SetDefault("LOG_LEVEL", "INFO")
+	viper.SetDefault("HTTP_SERVER_ADDRESS", "0.0.0.0:8080")
 
 	// Tell Viper to read config from file.
 	if err := viper.ReadInConfig(); err != nil {

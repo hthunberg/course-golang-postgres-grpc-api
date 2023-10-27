@@ -9,6 +9,8 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/hthunberg/course-golang-postgres-grpc-api/cmd"
+	"github.com/hthunberg/course-golang-postgres-grpc-api/internal/app/api"
+	"github.com/hthunberg/course-golang-postgres-grpc-api/internal/app/bank"
 	"github.com/hthunberg/course-golang-postgres-grpc-api/internal/app/util"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -52,6 +54,19 @@ func main() {
 	}
 
 	runDBMigration(cfg.MigrationURL, cfg.DBSource, logger)
+
+	// Set up the bank
+	bank := bank.NewBank(connPool)
+
+	// Set up the API server for the bank
+	server, err := api.NewServer(cfg, bank)
+	if err != nil {
+		logger.Fatal("initializing: api server", zap.Error(err))
+	}
+
+	if err := server.Start(cfg.HTTPServerAddress); err != nil {
+		logger.Fatal("initializing: start api server", zap.Error(err))
+	}
 
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)

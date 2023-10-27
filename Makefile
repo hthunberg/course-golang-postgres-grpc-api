@@ -12,7 +12,7 @@ GO_ARCH 	:= GOARCH=amd64
 all: sqlc fmt lint test integrationtest gosec build
 
 .PHONY: all-tools
-all-tools: lint-install sqlc-install gosec-install goimports-install
+all-tools: lint-install sqlc-install gosec-install goimports-install mockgen-install
 
 .PHONY: fmt
 fmt:
@@ -29,31 +29,14 @@ run: build
 	./bin/bank
 
 .PHONY: test
-test: fmt
+test: fmt mock
 	$(GO_ARCH) $(CGO_FLAGS) \
 	go test -race -v -cover -short ./...
 
-#########################
-# Docker wormhole pattern
-# Testcontainers will automatically detect if it's inside a container and instead of "localhost" will use the default gateway's IP.
-#
-# However, additional configuration is required if you use volume mapping. The following points need to be considered:
-# - The docker socket must be available via a volume mount
-# - The 'local' source code directory must be volume mounted at the same path inside the container that Testcontainers runs in, 
-#   so that Testcontainers is able to set up the correct volume mounts for the containers it spawns.
-#
-# https://docs.docker.com/desktop/extensions-sdk/guides/use-docker-socket-from-backend/
-#
-# docker run -it --rm -v $PWD:$PWD -w $PWD -v /var/run/docker.sock:/var/run/docker.sock bank-integration-test
-# docker run -it --rm -v $PWD:$PWD -w $PWD -v /var/run/docker.sock.raw:/var/run/docker.sock bank-integration-test
-#########################
-.PHONY: integrationtest-docker-run
-integrationtest-docker-run: integrationtest-docker-build
-	docker run -it --rm --name bank-integration-test \
-	-v $(PWD):$(PWD) \
-	-w $(PWD) \
-	-v /var/run/docker.sock.raw:/var/run/docker.sock \
-	bank-integration-test
+# Server requires a running PostgreSQL `make -C build up`
+.PHONY: server
+server:
+	go run cmd/bank/main.go
 
 .PHONY: integrationtest
 integrationtest: fmt
@@ -67,6 +50,15 @@ lint-install:
 .PHONY: lint
 lint: fmt
 	revive -config=revivie-lint.toml ./... 
+
+.PHONY: mockgen-install
+mockgen-install:
+	go install go.uber.org/mock/mockgen@latest
+
+# Generate mocks
+.PHONY: mock
+mock: mockgen-install
+	mockgen -source internal/app/bank/bank.go -destination internal/app/bank/mock/bank.go  -package mockdb
 
 # We use https://docs.sqlc.dev/en/stable/index.html for database queries and mapping. This library
 # has support for PostgreSQL, MySQL and SQLite, no other DBs supported.
@@ -106,13 +98,3 @@ docker-build:
 		-t "bank" \
 		.
 
-# Build a container to be used purely for running integration tests, docker in docker with testcontainers.
-# Start tests by 'make integrationtest-docker-run'
-.PHONY: integrationtest-docker-build
-integrationtest-docker-build:
-	DOCKER_DEFAULT_PLATFORM=linux/amd64 \
-	DOCKER_BUILDKIT=1 \
-	docker build \
-		-f build/docker/integrationTest.Dockerfile \
-		-t "bank-integration-test" \
-		.

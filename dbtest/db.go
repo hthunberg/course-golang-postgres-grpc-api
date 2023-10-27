@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -19,9 +20,11 @@ import (
 )
 
 const (
-	DbName = "test_db"
-	DbUser = "test_user"
-	DbPass = "test_password"
+	DBName = "test_db"
+	DBUser = "test_user"
+	DBPass = "test_password"
+	DBPort = "5432"
+	port   = DBPort + "/tcp"
 )
 
 // TestDatabase represents
@@ -30,37 +33,49 @@ const (
 // - handle to running test container
 type TestDatabase struct {
 	DbInstance *pgxpool.Pool
-	DbAddress  string
-	container  testcontainers.Container
+	DBPort     string
+	DBHost     string
+	Container  testcontainers.Container
 }
 
-func SetupTestDatabase() *TestDatabase {
+func SetupTestDatabase(ctx context.Context, testDatabaseContainerRequest testcontainers.GenericContainerRequest) (*TestDatabase, error) {
 	// setup db container
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
-	container, dbInstance, dbAddr, err := createContainer(ctx)
+	container, dbInstance, err := createContainer(ctx, testDatabaseContainerRequest)
 	if err != nil {
-		log.Fatal("failed to setup test", err)
+		return nil, fmt.Errorf("setup test db:create container: %v", err)
 	}
+
+	dbPort, err := container.MappedPort(ctx, nat.Port(port))
+	if err != nil {
+		return nil, fmt.Errorf("setup test bank:container port: %v", err)
+	}
+
+	dbHost, err := container.Host(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("setup test db:container host: %v", err)
+	}
+
+	dbAddr := fmt.Sprintf("%s:%s", dbHost, dbPort.Port())
 
 	// migrate db schema
 	err = migrateDb(dbAddr)
 	if err != nil {
-		log.Fatal("failed to perform db migration", err)
+		return nil, fmt.Errorf("setup test bank:migrate db: %v", err)
 	}
-	cancel()
 
 	return &TestDatabase{
-		container:  container,
+		Container:  container,
 		DbInstance: dbInstance,
-		DbAddress:  dbAddr,
-	}
+		DBPort:     dbPort.Port(),
+		DBHost:     dbHost,
+	}, nil
 }
 
 // TearDown tears down the running database container
 func (tdb *TestDatabase) TearDown() {
 	tdb.DbInstance.Close()
 	// remove test container
-	_ = tdb.container.Terminate(context.Background())
+	_ = tdb.Container.Terminate(context.Background())
 }
 
 func (tdb *TestDatabase) Truncate() error {
@@ -77,40 +92,50 @@ func (tdb *TestDatabase) Truncate() error {
 		}
 	}
 
-	log.Println("database truncated: ", tdb.DbAddress)
+	dbAddr := fmt.Sprintf("%s:%s", tdb.DBHost, tdb.DBPort)
+
+	log.Println("database truncated: ", dbAddr)
 	return nil
 }
 
-func createContainer(ctx context.Context) (testcontainers.Container, *pgxpool.Pool, string, error) {
+func TestDatabaseContainerRequest() testcontainers.GenericContainerRequest {
 	env := map[string]string{
-		"POSTGRES_PASSWORD": DbPass,
-		"POSTGRES_USER":     DbUser,
-		"POSTGRES_DB":       DbName,
+		"POSTGRES_PASSWORD": DBPass,
+		"POSTGRES_USER":     DBUser,
+		"POSTGRES_DB":       DBName,
 	}
-	port := "5432/tcp"
 
 	req := testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:        "postgres:bullseye",
 			ExposedPorts: []string{port},
 			Env:          env,
-			WaitingFor:   wait.ForLog("database system is ready to accept connections"),
+			WaitingFor: wait.ForAll(
+				wait.ForLog("database system is ready to accept connections"),
+				wait.ForExposedPort().WithStartupTimeout(60*time.Second),
+				wait.ForListeningPort(nat.Port(port)).WithStartupTimeout(10*time.Second),
+			),
 		},
 		Started: true,
 	}
+
+	return req
+}
+
+func createContainer(ctx context.Context, req testcontainers.GenericContainerRequest) (testcontainers.Container, *pgxpool.Pool, error) {
 	container, err := testcontainers.GenericContainer(ctx, req)
 	if err != nil {
-		return container, nil, "", fmt.Errorf("failed to start container: %v", err)
+		return container, nil, fmt.Errorf("create container:failed to start container: %v", err)
 	}
 
 	p, err := container.MappedPort(ctx, "5432")
 	if err != nil {
-		return container, nil, "", fmt.Errorf("failed to get container external port: %v", err)
+		return container, nil, fmt.Errorf("create container:failed to get container external port: %v", err)
 	}
 
 	h, err := container.Host(ctx)
 	if err != nil {
-		return container, nil, "", fmt.Errorf("failed to get container host: %v", err)
+		return container, nil, fmt.Errorf("create container:failed to get container host: %v", err)
 	}
 
 	time.Sleep(time.Second)
@@ -119,23 +144,25 @@ func createContainer(ctx context.Context) (testcontainers.Container, *pgxpool.Po
 
 	log.Println("postgres container ready and running at: ", dbAddr)
 
-	db, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", DbUser, DbPass, dbAddr, DbName))
+	db, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", DBUser, DBPass, dbAddr, DBName))
 	if err != nil {
-		return container, db, dbAddr, fmt.Errorf("failed to establish database connection: %v", err)
+		return container, db, fmt.Errorf("create container:failed to establish database connection: %v", err)
 	}
 
-	return container, db, dbAddr, nil
+	return container, db, nil
 }
 
 func migrateDb(dbAddr string) error {
-	databaseURL := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", DbUser, DbPass, dbAddr, DbName)
+	databaseURL := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", DBUser, DBPass, dbAddr, DBName)
 
 	// file:./<path> to be relative to working directory
 	migrationsURL := os.Getenv("MIGRATION_URL")
 
 	if len(migrationsURL) < 1 {
-		return fmt.Errorf("missing env migration_url: %s", migrationsURL)
+		return fmt.Errorf("migrate db:missing env migration_url: %s", migrationsURL)
 	}
+
+	log.Printf("migrate db:running db migrations using db %s migrations %s", databaseURL, migrationsURL)
 
 	migration, err := migrate.New(migrationsURL, databaseURL)
 	if err != nil {
@@ -145,7 +172,7 @@ func migrateDb(dbAddr string) error {
 
 	err = migration.Up()
 	if err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return err
+		return fmt.Errorf("migrate db:migrate up: %v", err)
 	}
 
 	log.Println("migration done")

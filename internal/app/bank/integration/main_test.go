@@ -3,7 +3,9 @@
 package integration
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
 	"testing"
 
@@ -16,7 +18,14 @@ var testee bank.Bank
 func TestMain(m *testing.M) {
 	os.Setenv("MIGRATION_URL", fmt.Sprintf("file:.%s", "/../../../../build/db/migrations"))
 
-	testDB := dbtest.SetupTestDatabase()
+	ctx := context.Background()
+
+	// Set up a postgres DB
+	testDBRequest := dbtest.TestDatabaseContainerRequest()
+	testDB, err := dbtest.SetupTestDatabase(ctx, testDBRequest)
+	if err != nil {
+		log.Fatal("failed to setup postgres db", err)
+	}
 	defer testDB.TearDown()
 	testee = bank.NewBank(testDB.DbInstance)
 

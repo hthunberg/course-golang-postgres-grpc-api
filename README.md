@@ -17,6 +17,7 @@ Learn everything about backend web development: Golang, Postgres, Redis, Gin, gR
   * testcontainers-go, https://github.com/testcontainers/testcontainers-go
   * sqlc, https://sqlc.dev
 * PostgreSQL, https://www.postgresql.org
+* Gin web framework, https://github.com/gin-gonic/gin
 
 ## VSCode setup
 
