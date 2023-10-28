@@ -95,6 +95,6 @@ docker-build:
 	DOCKER_BUILDKIT=1 \
 	docker build \
 		-f build/docker/Dockerfile \
-		-t "bank" \
+		-t "course-golang-postgres-grpc-api/bank" \
 		.
 

@@ -62,7 +62,7 @@ func TestBankContainerRequest(dbAddr, absoluteMigrationsPath string) tc.GenericC
 
 	req := tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
-			Image:        "bank:latest",
+			Image:        "course-golang-postgres-grpc-api/bank:latest",
 			Labels:       map[string]string{"app": "testbank"},
 			ExposedPorts: []string{port},
 			Env:          env,
@@ -102,17 +102,7 @@ func (t *TestBankClient) createUser(reqBody io.Reader) (res *http.Response, body
 		return nil, nil, fmt.Errorf("create user:new request: %v", err)
 	}
 
-	if res, err = t.httpClient.Do(req); err != nil {
-		return nil, nil, fmt.Errorf("create user:do request: %v", err)
-	}
-
-	if body, err = io.ReadAll(res.Body); err != nil {
-		return nil, nil, fmt.Errorf("create user:read response: %v", err)
-	}
-
-	_ = res.Body.Close()
-
-	return res, body, nil
+	return t.doRequest(req)
 }
 
 func (t *TestBankClient) createAccount(reqBody io.Reader) (res *http.Response, body []byte, err error) {
@@ -124,12 +114,16 @@ func (t *TestBankClient) createAccount(reqBody io.Reader) (res *http.Response, b
 		return nil, nil, fmt.Errorf("create account:new request: %v", err)
 	}
 
+	return t.doRequest(req)
+}
+
+func (t *TestBankClient) doRequest(req *http.Request) (res *http.Response, body []byte, err error) {
 	if res, err = t.httpClient.Do(req); err != nil {
-		return nil, nil, fmt.Errorf("create account:do request: %v", err)
+		return nil, nil, fmt.Errorf("do request: %v", err)
 	}
 
 	if body, err = io.ReadAll(res.Body); err != nil {
-		return nil, nil, fmt.Errorf("create account:read response: %v", err)
+		return nil, nil, fmt.Errorf("do request:read response: %v", err)
 	}
 
 	_ = res.Body.Close()
