@@ -49,32 +49,27 @@ func (tdb *TestBank) TearDown() {
 	_ = tdb.container.Terminate(context.Background())
 }
 
-func TestBankContainerRequest(dbAddr string) tc.GenericContainerRequest {
+func TestBankContainerRequest(dbAddr, absoluteMigrationsPath string) tc.GenericContainerRequest {
 	dbSource := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", dbtest.DBUser, dbtest.DBPass, dbAddr, dbtest.DBName)
-
-	// TODO: Hans fixa
-	// file:./<path> to be relative to working directory
-	// hostPathMigrationsURL := os.Getenv("MIGRATION_URL")
-	hostPathMigrationsURL := "/Users/hansthunberg/git-views/golang/course-golang-postgres-grpc-api/build/db/migrations"
 
 	env := map[string]string{
 		"ENVIRONMENT":   "integrationtest",
 		"DB_SOURCE":     dbSource,
-		"MIGRATION_URL": "file://migrations",
+		"MIGRATION_URL": "file://migrations", // Relative to /app/bin/migrations
 		"LOG_LEVEL":     "DEBUG",
 	}
 	port := "8080/tcp"
 
 	req := tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
-			Name:         "testbank",
 			Image:        "bank:latest",
+			Labels:       map[string]string{"app": "testbank"},
 			ExposedPorts: []string{port},
 			Env:          env,
 			Mounts: tc.ContainerMounts{
 				tc.ContainerMount{
 					Source: tc.GenericBindMountSource{
-						HostPath: hostPathMigrationsURL,
+						HostPath: absoluteMigrationsPath,
 					},
 					Target: tc.ContainerMountTarget("/app/bin/migrations"),
 				},

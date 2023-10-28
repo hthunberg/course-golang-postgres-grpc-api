@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/hthunberg/course-golang-postgres-grpc-api/dbtest"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 )
 
 var (
@@ -20,8 +22,6 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	os.Setenv("MIGRATION_URL", fmt.Sprintf("file:.%s", "/../../build/db/migrations"))
-
 	ctx := context.Background()
 
 	// Docker provides the ability for us to create custom networks and place containers on one or more networks.
@@ -36,23 +36,28 @@ func TestMain(m *testing.M) {
 	// Alias for postgres db when running inside a custom network,
 	testDBAlias := "testdb"
 
+	absoluteMigrationsPath, err := filepath.Abs("../../build/db/migrations")
+	if err != nil {
+		log.Fatal("failed to calculate absolute path to db migrations", zap.Error(err))
+	}
+
 	// Set up a postgres DB
 	testDBRequest := dbtest.TestDatabaseContainerRequest()
 	network.ApplyNetworkAlias(&testDBRequest, testDBAlias)
-	testDB, err := dbtest.SetupTestDatabase(ctx, testDBRequest)
+	testDB, err := dbtest.SetupTestDatabase(ctx, testDBRequest, absoluteMigrationsPath)
 	if err != nil {
-		log.Fatal("failed to setup postgres db", err)
+		log.Fatal("failed to setup postgres db", zap.Error(err))
 	}
 	defer testDB.TearDown()
 	testDbInstance = testDB.DbInstance
 
 	// Set up a test bank
 	dbAddr := fmt.Sprintf("%s:%s", testDBAlias, dbtest.DBPort)
-	testBankRequest := TestBankContainerRequest(dbAddr)
+	testBankRequest := TestBankContainerRequest(dbAddr, absoluteMigrationsPath)
 	network.ApplyNetworkAlias(&testBankRequest, "testbank")
 	testBank, err := setupTestBank(ctx, testBankRequest)
 	if err != nil {
-		log.Fatal("failed to setup test bank", err)
+		log.Fatal("failed to setup test bank", zap.Error(err))
 	}
 	defer testBank.TearDown()
 

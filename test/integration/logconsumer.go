@@ -27,7 +27,6 @@ func newTestLogConsumer(msgs []string, done chan bool) TestLogConsumer {
 }
 
 func (g *TestLogConsumer) Accept(l tc.Log) {
-	// fmt.Println(string(l.Content))
 	s := string(l.Content)
 	if s == fmt.Sprintf("echo %s\n", lastMessage) {
 		g.Done <- true

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/docker/go-connections/nat"
@@ -38,7 +37,7 @@ type TestDatabase struct {
 	Container  testcontainers.Container
 }
 
-func SetupTestDatabase(ctx context.Context, testDatabaseContainerRequest testcontainers.GenericContainerRequest) (*TestDatabase, error) {
+func SetupTestDatabase(ctx context.Context, testDatabaseContainerRequest testcontainers.GenericContainerRequest, absoluteMigrationsPath string) (*TestDatabase, error) {
 	// setup db container
 	container, dbInstance, err := createContainer(ctx, testDatabaseContainerRequest)
 	if err != nil {
@@ -58,7 +57,7 @@ func SetupTestDatabase(ctx context.Context, testDatabaseContainerRequest testcon
 	dbAddr := fmt.Sprintf("%s:%s", dbHost, dbPort.Port())
 
 	// migrate db schema
-	err = migrateDb(dbAddr)
+	err = migrateDb(dbAddr, absoluteMigrationsPath)
 	if err != nil {
 		return nil, fmt.Errorf("setup test bank:migrate db: %v", err)
 	}
@@ -152,11 +151,11 @@ func createContainer(ctx context.Context, req testcontainers.GenericContainerReq
 	return container, db, nil
 }
 
-func migrateDb(dbAddr string) error {
+func migrateDb(dbAddr, absoluteMigrationsPath string) error {
 	databaseURL := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", DBUser, DBPass, dbAddr, DBName)
 
-	// file:./<path> to be relative to working directory
-	migrationsURL := os.Getenv("MIGRATION_URL")
+	// URL file:./<path> needed fir golang-migrate
+	migrationsURL := fmt.Sprintf("file:%s", absoluteMigrationsPath)
 
 	if len(migrationsURL) < 1 {
 		return fmt.Errorf("migrate db:missing env migration_url: %s", migrationsURL)
