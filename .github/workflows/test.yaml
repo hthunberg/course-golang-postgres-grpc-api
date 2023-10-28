@@ -48,6 +48,9 @@ jobs:
     #- name: Run migrations
     #  run: make migrateup
 
+    - name: Build
+      run: make docker-build
+
     # Run all tests that are not integration tests
     - name: Test
       run: make test
